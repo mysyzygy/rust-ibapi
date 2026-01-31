@@ -241,7 +241,8 @@ impl<T> Subscription<T> {
                                 ProcessingResult::Success(val) => return Some(Ok(val)),
                                 ProcessingResult::EndOfStream => return None,
                                 ProcessingResult::Retry => {
-                                    if check_retry(retry_count) == RetryDecision::Stop {
+                                    // Use enhanced logging to see what message was unexpected
+                                    if check_retry(retry_count, &message) == RetryDecision::Stop {
                                         return None;
                                     }
                                     retry_count += 1;

@@ -63,6 +63,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 Ok(OrderUpdate::Message(notice)) => {
                     println!("Order Message: {} - {}", notice.code, notice.message);
                 }
+                Ok(OrderUpdate::ExecutionDataEnd) => {
+                    println!("Execution data complete");
+                }
+                Ok(OrderUpdate::OpenOrderEnd) => {
+                    println!("Open order data complete");
+                }
                 Err(e) => {
                     eprintln!("Error in order stream: {e:?}");
                     break;

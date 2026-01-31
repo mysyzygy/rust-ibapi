@@ -16,22 +16,27 @@ pub(crate) enum RetryDecision {
     Stop,
 }
 
-/// Checks if a retry should be attempted and logs appropriately.
+/// Checks if a retry should be attempted and logs the message content for debugging.
 /// Returns `RetryDecision::Continue` if retry count is below max, `RetryDecision::Stop` otherwise.
-pub(crate) fn check_retry(retry_count: usize) -> RetryDecision {
+pub(crate) fn check_retry(retry_count: usize, message: &ResponseMessage) -> RetryDecision {
     if retry_count < MAX_DECODE_RETRIES {
-        log::warn!("retrying after unexpected response (attempt {}/{})", retry_count + 1, MAX_DECODE_RETRIES);
+        log::warn!(
+            "retrying after unexpected response (attempt {}/{}): message_type={:?}, fields={:?}",
+            retry_count + 1,
+            MAX_DECODE_RETRIES,
+            message.message_type(),
+            &message.fields
+        );
         RetryDecision::Continue
     } else {
-        log::error!("max retries ({}) exceeded, stopping subscription", MAX_DECODE_RETRIES);
+        log::error!(
+            "max retries ({}) exceeded, stopping subscription. Last message: type={:?}, fields={:?}",
+            MAX_DECODE_RETRIES,
+            message.message_type(),
+            &message.fields
+        );
         RetryDecision::Stop
     }
-}
-
-/// Checks if an error indicates the subscription should retry processing
-#[allow(dead_code)]
-pub(crate) fn should_retry_error(error: &Error) -> bool {
-    matches!(error, Error::UnexpectedResponse(_))
 }
 
 /// Checks if an error indicates the end of a stream
@@ -75,14 +80,6 @@ mod tests {
     use crate::messages::ResponseMessage;
 
     #[test]
-    fn test_should_retry_error() {
-        let test_msg = ResponseMessage::from_simple("test");
-        assert!(should_retry_error(&Error::UnexpectedResponse(test_msg)));
-        assert!(!should_retry_error(&Error::EndOfStream));
-        assert!(!should_retry_error(&Error::ConnectionFailed));
-    }
-
-    #[test]
     fn test_is_stream_end() {
         let test_msg = ResponseMessage::from_simple("test");
         assert!(is_stream_end(&Error::EndOfStream));
@@ -100,14 +97,16 @@ mod tests {
 
     #[test]
     fn test_check_retry() {
+        let test_msg = ResponseMessage::from_simple("test");
+
         // Should continue when under max retries
-        assert_eq!(check_retry(0), RetryDecision::Continue);
-        assert_eq!(check_retry(5), RetryDecision::Continue);
-        assert_eq!(check_retry(MAX_DECODE_RETRIES - 1), RetryDecision::Continue);
+        assert_eq!(check_retry(0, &test_msg), RetryDecision::Continue);
+        assert_eq!(check_retry(5, &test_msg), RetryDecision::Continue);
+        assert_eq!(check_retry(MAX_DECODE_RETRIES - 1, &test_msg), RetryDecision::Continue);
 
         // Should stop when at or over max retries
-        assert_eq!(check_retry(MAX_DECODE_RETRIES), RetryDecision::Stop);
-        assert_eq!(check_retry(MAX_DECODE_RETRIES + 1), RetryDecision::Stop);
+        assert_eq!(check_retry(MAX_DECODE_RETRIES, &test_msg), RetryDecision::Stop);
+        assert_eq!(check_retry(MAX_DECODE_RETRIES + 1, &test_msg), RetryDecision::Stop);
     }
 
     #[test]

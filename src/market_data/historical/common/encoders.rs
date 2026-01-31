@@ -164,6 +164,19 @@ pub(crate) fn encode_request_histogram_data(request_id: i32, contract: &Contract
     Ok(message)
 }
 
+/// Encodes a cancel historical data request
+#[cfg(feature = "async")]
+pub(crate) fn encode_cancel_historical_data(request_id: i32) -> Result<RequestMessage, Error> {
+    const VERSION: i32 = 1;
+
+    let mut message = RequestMessage::default();
+    message.push_field(&OutgoingMessages::CancelHistoricalData);
+    message.push_field(&VERSION);
+    message.push_field(&request_id);
+
+    Ok(message)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

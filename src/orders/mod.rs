@@ -1369,6 +1369,14 @@ pub enum OrderUpdate {
     CommissionReport(CommissionReport),
     /// Notice or error message.
     Message(crate::messages::Notice),
+    /// End of execution data marker - can be safely ignored.
+    /// IB sends this after execution queries complete, and it may get routed
+    /// to the order update stream. It signals no more executions, not stream end.
+    ExecutionDataEnd,
+    /// End of open orders marker - can be safely ignored.
+    /// IB sends this after open order queries complete, and it may get routed
+    /// to the order update stream. It signals no more open orders, not stream end.
+    OpenOrderEnd,
 }
 
 /// Contains all relevant information on the current status of the order execution-wise (i.e. amount filled and pending, filling price, etc.).

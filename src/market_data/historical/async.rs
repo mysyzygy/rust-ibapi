@@ -1,5 +1,7 @@
 use log::{debug, warn};
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use time::OffsetDateTime;
 use time_tz::Tz;
 
@@ -7,7 +9,7 @@ use crate::client::ClientRequestBuilders;
 use crate::contracts::Contract;
 use crate::messages::IncomingMessages;
 use crate::protocol::{check_version, Features};
-use crate::transport::AsyncInternalSubscription;
+use crate::transport::{AsyncInternalSubscription, AsyncMessageBus};
 use crate::{Client, Error, MAX_RETRIES};
 
 use super::common::{decoders, encoders};
@@ -409,9 +411,10 @@ pub async fn historical_data_streaming(
 
     // Note: end_date must be None when keepUpToDate=true (IBKR requirement)
     let builder = client.request();
+    let request_id = builder.request_id();
     let request = encoders::encode_request_historical_data(
         client.server_version(),
-        builder.request_id(),
+        request_id,
         contract,
         None, // end_date must be None for keepUpToDate
         duration,
@@ -432,27 +435,64 @@ pub async fn historical_data_streaming(
         time_tz::timezones::db::UTC
     });
 
-    Ok(HistoricalDataStreamingSubscription::new(subscription, client.server_version(), tz))
+    Ok(HistoricalDataStreamingSubscription::new(
+        subscription,
+        client.server_version(),
+        tz,
+        request_id,
+        client.message_bus.clone(),
+    ))
 }
 
 /// Async subscription for streaming historical data with keepUpToDate=true.
 ///
 /// This subscription first yields the initial historical bars as a `Historical` variant,
 /// then continues to yield streaming updates for the current bar as `Update` variants.
+///
+/// When dropped, this subscription automatically sends a cancel message to IBKR
+/// to stop receiving updates.
 pub struct HistoricalDataStreamingSubscription {
     messages: AsyncInternalSubscription,
     server_version: i32,
     time_zone: &'static Tz,
     error: Option<Error>,
+    request_id: i32,
+    message_bus: Arc<dyn AsyncMessageBus>,
+    cancelled: AtomicBool,
 }
 
 impl HistoricalDataStreamingSubscription {
-    fn new(messages: AsyncInternalSubscription, server_version: i32, time_zone: &'static Tz) -> Self {
+    fn new(
+        messages: AsyncInternalSubscription,
+        server_version: i32,
+        time_zone: &'static Tz,
+        request_id: i32,
+        message_bus: Arc<dyn AsyncMessageBus>,
+    ) -> Self {
         Self {
             messages,
             server_version,
             time_zone,
             error: None,
+            request_id,
+            message_bus,
+            cancelled: AtomicBool::new(false),
+        }
+    }
+
+    /// Cancel the streaming subscription.
+    ///
+    /// This sends a cancel message to IBKR to stop receiving updates.
+    /// The subscription is automatically cancelled when dropped.
+    pub async fn cancel(&self) {
+        if self.cancelled.swap(true, Ordering::Relaxed) {
+            return; // Already cancelled
+        }
+
+        if let Ok(message) = encoders::encode_cancel_historical_data(self.request_id) {
+            if let Err(e) = self.message_bus.send_message(message).await {
+                warn!("error sending cancel historical data message: {e}");
+            }
         }
     }
 
@@ -517,6 +557,28 @@ impl HistoricalDataStreamingSubscription {
     /// Returns the last error that occurred, if any.
     pub fn error(&self) -> Option<&Error> {
         self.error.as_ref()
+    }
+}
+
+impl Drop for HistoricalDataStreamingSubscription {
+    fn drop(&mut self) {
+        debug!("dropping historical data streaming subscription");
+
+        // Check if already cancelled
+        if self.cancelled.swap(true, Ordering::Relaxed) {
+            return;
+        }
+
+        // Send cancel message
+        if let Ok(message) = encoders::encode_cancel_historical_data(self.request_id) {
+            let message_bus = self.message_bus.clone();
+            // Spawn a task to send the cancel message since drop can't be async
+            tokio::spawn(async move {
+                if let Err(e) = message_bus.send_message(message).await {
+                    warn!("error sending cancel historical data message in drop: {e}");
+                }
+            });
+        }
     }
 }
 

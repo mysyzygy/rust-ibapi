@@ -88,7 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .cmp(&b.contract.last_trade_date_or_contract_month)
             });
 
-            let front = sorted.into_iter().next().expect("No valid contracts");
+            let front = sorted.into_iter().next().ok_or("No valid futures contracts found for ES")?;
             println!(
                 "  Found front-month: local_symbol='{}', contract_month='{}'",
                 front.contract.local_symbol, front.contract.last_trade_date_or_contract_month

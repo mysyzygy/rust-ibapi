@@ -32,6 +32,10 @@ impl StreamDecoder<OrderUpdate> for OrderUpdate {
                 server_version,
                 message,
             )?)),
+            // ExecutionDataEnd can be safely ignored - it just signals end of execution query results
+            IncomingMessages::ExecutionDataEnd => Ok(OrderUpdate::ExecutionDataEnd),
+            // OpenOrderEnd can be safely ignored - it just signals end of open order query results
+            IncomingMessages::OpenOrderEnd => Ok(OrderUpdate::OpenOrderEnd),
             IncomingMessages::Error => Ok(OrderUpdate::Message(Notice::from(message))),
             _ => Err(Error::UnexpectedResponse(message.clone())),
         }

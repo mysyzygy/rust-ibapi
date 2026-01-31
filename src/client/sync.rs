@@ -3025,6 +3025,9 @@ mod tests {
                     OrderUpdate::Message(_) => {
                         // Skip any messages
                     }
+                    OrderUpdate::ExecutionDataEnd | OrderUpdate::OpenOrderEnd => {
+                        // Informational markers, continue processing
+                    }
                 }
             } else {
                 // Timeout reached, no more messages available
