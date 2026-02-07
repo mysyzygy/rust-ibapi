@@ -12,12 +12,13 @@
 //! cargo run --example async_historical_data
 //! cargo run --example async_historical_data -- --asset forex
 //! cargo run --example async_historical_data -- --asset futures
+//! cargo run --example async_historical_data -- --asset crypto
 //! ```
 //!
 //! # Configuration
 //!
 //! - Adjust the connection address if needed (default: 127.0.0.1:4002)
-//! - Use --asset to select: stock (AAPL), forex (EUR.USD), or futures (ES)
+//! - Use --asset to select: stock (AAPL), forex (EUR.USD), futures (ES), or crypto (BTC)
 //! - Modify duration and bar size to get different data periods
 
 use std::sync::Arc;
@@ -46,6 +47,7 @@ enum AssetType {
     Stock,
     Forex,
     Futures,
+    Crypto,
 }
 
 #[tokio::main]
@@ -95,6 +97,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
             front.contract
         }
+        AssetType::Crypto => Contract::crypto("BTC").on_exchange("ZEROHASH").build(),
     };
     println!("Requesting historical data for {} ({:?})", contract.symbol, args.asset);
     println!(
@@ -246,15 +249,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Use appropriate data type per asset
     let what_to_show = match args.asset {
-        AssetType::Forex => HistoricalWhatToShow::MidPoint,
+        AssetType::Forex | AssetType::Crypto => HistoricalWhatToShow::MidPoint,
         _ => HistoricalWhatToShow::Trades,
     };
 
     let mut subscription = client
         .historical_data_streaming(
             &contract,
-            1.days(),               // Duration: 1 day of history
-            HistoricalBarSize::Min, // 1-minute bars
+            1.days(),                // Duration: 1 day of history
+            HistoricalBarSize::Min2, // 1-minute bars
             Some(what_to_show),
             TradingHours::Extended,
             true, // keep_up_to_date: stream live updates

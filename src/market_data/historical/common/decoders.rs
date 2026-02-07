@@ -244,10 +244,13 @@ pub(crate) fn decode_historical_data_update(time_zone: &Tz, message: &mut Respon
     message.skip(); // bar_count (always -1 for updates)
 
     let date = message.next_string()?;
+    // IB wire protocol for message 90 (HistoricalDataUpdate) sends fields as:
+    //   open, close, high, low  (NOT the standard open, high, low, close)
+    // See IB Java EDecoder.processHistoricalDataUpdateMsg() for reference.
     let open = message.next_double()?;
+    let close = message.next_double()?;
     let high = message.next_double()?;
     let low = message.next_double()?;
-    let close = message.next_double()?;
     let volume = message.next_double()?;
     let wap = message.next_double()?;
     // count field is optional in streaming updates - may not be present
@@ -485,8 +488,9 @@ mod tests {
     fn test_decode_historical_data_update() {
         let time_zone: &Tz = time_tz::timezones::db::america::NEW_YORK;
 
-        // Message format: message_type|request_id|bar_count|timestamp|open|high|low|close|volume|wap|count
-        let mut message = ResponseMessage::from("90\09000\0-1\01681133400\0185.50\0186.00\0185.00\0185.75\01000.5\0185.625\0150\0");
+        // Wire format for msg 90: message_type|request_id|bar_count|timestamp|open|close|high|low|volume|wap|count
+        // Note: IB sends close BEFORE high/low for streaming updates (unlike historical bars)
+        let mut message = ResponseMessage::from("90\09000\0-1\01681133400\0185.50\0185.75\0186.00\0185.00\01000.5\0185.625\0150\0");
 
         let bar = decode_historical_data_update(time_zone, &mut message).expect("error decoding historical data update");
 
@@ -504,8 +508,8 @@ mod tests {
     fn test_decode_historical_data_update_without_count() {
         let time_zone: &Tz = time_tz::timezones::db::america::NEW_YORK;
 
-        // Message without count field (optional in streaming updates)
-        let mut message = ResponseMessage::from("90\09000\0-1\01681133400\0185.50\0186.00\0185.00\0185.75\01000.5\0185.625\0");
+        // Wire format for msg 90 without count: timestamp|open|close|high|low|volume|wap
+        let mut message = ResponseMessage::from("90\09000\0-1\01681133400\0185.50\0185.75\0186.00\0185.00\01000.5\0185.625\0");
 
         let bar = decode_historical_data_update(time_zone, &mut message).expect("error decoding historical data update");
 
